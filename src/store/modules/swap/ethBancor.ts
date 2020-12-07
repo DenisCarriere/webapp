@@ -5972,38 +5972,44 @@ export class EthBancorModule
       trade.accumulatedFees.map(x => x.id)
     );
     const allTokens = this.tokens;
-    const tokens = uniqueTokens.map(
-      id => allTokens.find(t => compareString(t.id, id))!
-    );
+    const tokens = uniqueTokens
+      .map(id => allTokens.find(t => compareString(t.id, id))!)
+      .filter(Boolean);
 
     console.log(tradesCollected, "are the trades collected");
-    const withUsdValues = tradesCollected.map(trade => ({
-      ...trade,
-      accumulatedFees: trade.accumulatedFees.map(fee => {
-        const viewToken = tokens.find(x => compareString(x.id, fee.id))!;
-        const decAmountFees = shrinkToken(
-          fee.collectedFees,
-          viewToken.precision
-        );
-        const decAmountVolume = shrinkToken(
-          fee.totalVolume,
-          viewToken.precision
-        );
-        const usdFees = new BigNumber(decAmountFees)
-          .times(viewToken.price!)
-          .toString();
+    const withUsdValues = tradesCollected
+      .filter(trade =>
+        trade.accumulatedFees.every(fee =>
+          tokens.some(x => compareString(x.id, fee.id))
+        )
+      )
+      .map(trade => ({
+        ...trade,
+        accumulatedFees: trade.accumulatedFees.map(fee => {
+          const viewToken = tokens.find(x => compareString(x.id, fee.id))!;
+          const decAmountFees = shrinkToken(
+            fee.collectedFees,
+            viewToken.precision
+          );
+          const decAmountVolume = shrinkToken(
+            fee.totalVolume,
+            viewToken.precision
+          );
+          const usdFees = new BigNumber(decAmountFees)
+            .times(viewToken.price!)
+            .toString();
 
-        const usdVolume = new BigNumber(decAmountVolume)
-          .times(viewToken.price!)
-          .toString();
+          const usdVolume = new BigNumber(decAmountVolume)
+            .times(viewToken.price!)
+            .toString();
 
-        return {
-          ...fee,
-          usdFees,
-          usdVolume
-        };
-      })
-    }));
+          return {
+            ...fee,
+            usdFees,
+            usdVolume
+          };
+        })
+      }));
 
     const accumulatedFee = withUsdValues.map(trade => {
       const totalFees = trade.accumulatedFees.reduce(
@@ -6853,11 +6859,15 @@ export class EthBancorModule
       )
       .reduce((acc, relay) => {
         const relayBalances = relay as RelayWithReserveBalances;
-        const bntReserveBalance =
-          relayBalances.reserveBalances?.find(reserve =>
-            compareString(reserve.id, bntTokenAddress)
-          )?.amount || "0";
-        return new BigNumber(acc).plus(bntReserveBalance).toString();
+        // TODO: find a better solution @HEAD
+        try {
+          const bntReserveBalance = findOrThrow(
+            relayBalances.reserveBalances,
+            reserve => compareString(reserve.id, bntTokenAddress)
+          ).amount;
+          return new BigNumber(acc).plus(bntReserveBalance).toString();
+        } catch {}
+        return acc;
       }, "0");
 
     const percent = new BigNumber(totalBntInRelays).div(bntSupply).toNumber();
